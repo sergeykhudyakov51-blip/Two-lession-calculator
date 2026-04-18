@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<!-- Атрибут data-theme задаётся скриптом: "light" или "dark" (см. блок переключения темы внизу страницы). -->
+<html lang="ru" data-theme="light">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Калькулятор цены полиграфического заказа</title>
+  <!-- Ранняя установка темы из localStorage или системных настроек — убирает мигание светлой темы при загрузке. -->
+  <script>
+    (function () {
+      try {
+        var key = 'print-calc-theme';
+        var theme = localStorage.getItem(key);
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) { /* localStorage недоступен — остаётся data-theme с тега html */ }
+    })();
+  </script>
+  <style>
+    /*
+      Цветовая схема: общие переменные в :root, для тёмной темы — переопределение в html[data-theme="dark"].
+      Поля формы и вспомогательные блоки используют отдельные переменные (--input-bg, --note-bg и т.д.).
+    */
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --border: #d9e1ea;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --accent-dark: #1d4ed8;
+      --success: #0f766e;
+      --danger: #b91c1c;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      --radius: 14px;
+      /* Поля ввода и строки с чекбоксом */
+      --input-bg: #ffffff;
+      --checkbox-bg: #ffffff;
+      /* Блоки итогов и подсказок */
+      --result-bg: #fafcff;
+      --note-bg: #eff6ff;
+      --note-text: #1e3a8a;
+      --warning-bg: #fff7ed;
+      --warning-text: #92400e;
+      /* Второстепенные кнопки */
+      --btn-secondary-bg: #e5e7eb;
+      --btn-secondary-hover: #d1d5db;
+      --btn-secondary-text: #111827;
+      --btn-danger-bg: #fee2e2;
+      --btn-danger-hover: #fecaca;
+    }
+
+    /* Тёмная тема: те же имена переменных — интерфейс перекрашивается без дублирования разметки */
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0f1419;
+      --card: #1a2332;
+      --border: #2d3a4d;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #3b82f6;
+      --accent-dark: #60a5fa;
+      --success: #2dd4bf;
+      --danger: #f87171;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      --input-bg: #111827;
+      --checkbox-bg: #1f2937;
+      --result-bg: #111827;
+      --note-bg: #1e3a5f;
+      --note-text: #bfdbfe;
+      --warning-bg: #451a03;
+      --warning-text: #fcd34d;
+      --btn-secondary-bg: #374151;
+      --btn-secondary-hover: #4b5563;
+      --btn-secondary-text: #f3f4f6;
+      --btn-danger-bg: rgba(239, 68, 68, 0.22);
+      --btn-danger-hover: rgba(239, 68, 68, 0.38);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .container {
+      max-width: 1300px;
+      margin: 24px auto;
+      padding: 0 16px 40px;
+    }
+
+    .title-block {
+      margin-bottom: 20px;
+    }
+
+    .title-block h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.2;
+    }
+
+    .title-block p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px;
+    }
+
+    .card h2 {
+      margin: 0 0 16px;
+      font-size: 20px;
+    }
+
+    .section-title {
+      margin: 22px 0 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      font-size: 16px;
+      color: var(--accent-dark);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field label {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .field small {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    input[type="number"],
+    input[type="text"],
+    select {
+      width: 100%;
+      height: 42px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0 12px;
+      font-size: 14px;
+      outline: none;
+      background: var(--input-bg);
+      color: var(--text);
+    }
+
+    input[type="checkbox"] {
+      transform: scale(1.15);
+      margin-right: 8px;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      min-height: 42px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0 12px;
+      background: var(--checkbox-bg);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    button {
+      height: 44px;
+      padding: 0 16px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-dark);
+    }
+
+    .btn-secondary {
+      background: var(--btn-secondary-bg);
+      color: var(--btn-secondary-text);
+    }
+
+    .btn-secondary:hover {
+      background: var(--btn-secondary-hover);
+    }
+
+    .btn-danger {
+      background: var(--btn-danger-bg);
+      color: var(--danger);
+    }
+
+    .btn-danger:hover {
+      background: var(--btn-danger-hover);
+    }
+
+    .summary-top {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .result-box {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      background: var(--result-bg);
+    }
+
+    .result-box .label {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .result-box .value {
+      font-size: 26px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .result-box .sub {
+      margin-top: 4px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th:last-child,
+    td:last-child {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .total-row td {
+      font-weight: 800;
+      font-size: 15px;
+    }
+
+    .note {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-left: 4px solid var(--accent);
+      background: var(--note-bg);
+      border-radius: 8px;
+      color: var(--note-text);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .warning {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-left: 4px solid #f59e0b;
+      background: var(--warning-bg);
+      border-radius: 8px;
+      color: var(--warning-text);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .footer-info {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .mono {
+      font-family: Consolas, Monaco, monospace;
+    }
+
+    /*
+      Кнопка переключения темы: фиксируется в правом нижнем углу окна (viewport),
+      поверх контента (z-index), не мешает прокрутке страницы.
+    */
+    .theme-toggle {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 1000;
+      width: 52px;
+      height: 52px;
+      padding: 0;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--card);
+      box-shadow: var(--shadow);
+      font-size: 22px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    .theme-toggle:hover {
+      transform: scale(1.06);
+    }
+
+    .theme-toggle:focus {
+      outline: none;
+    }
+
+    .theme-toggle:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .grid,
+      .grid-3 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media print {
+      body {
+        background: white;
+      }
+
+      .actions,
+      .title-block p,
+      .note,
+      .warning,
+      .footer-info,
+      .theme-toggle {
+        display: none;
+      }
+
+      .container {
+        max-width: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .card {
+        box-shadow: none;
+        border: 1px solid #ccc;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="title-block">
+      <h1>Калькулятор цены полиграфического заказа</h1>
+      <p>
+        Универсальный HTML-калькулятор для расчета стоимости полиграфической продукции.
+        Подходит как основа для оперативной оценки заказа в типографии, на сайте или во внутреннем сервисе.
+      </p>
+    </div>
+
+    <div class="layout">
+      <!-- Левая колонка: форма -->
+      <div class="card">
+        <h2>Параметры заказа</h2>
+
+        <div class="section-title">1. Основные параметры</div>
+        <div class="grid">
+          <div class="field">
+            <label for="productName">Название заказа</label>
+            <input type="text" id="productName" value="Полиграфический заказ" />
+            <small>Например: визитки, листовка, буклет, каталог, меню.</small>
+          </div>
+
+          <div class="field">
+            <label for="format">Формат изделия</label>
+            <select id="format">
+              <option value="A6">A6 (105×148 мм)</option>
+              <option value="A5">A5 (148×210 мм)</option>
+              <option value="A4" selected>A4 (210×297 мм)</option>
+              <option value="A3">A3 (297×420 мм)</option>
+              <option value="Custom">Произвольный формат</option>
+            </select>
+            <small>Используется коэффициент площади для расчета материала и печати.</small>
+          </div>
+
+          <div class="field">
+            <label for="customWidth">Ширина, мм</label>
+            <input type="number" id="customWidth" value="210" min="1" step="1" disabled />
+            <small>Активно только для произвольного формата.</small>
+          </div>
+
+          <div class="field">
+            <label for="customHeight">Высота, мм</label>
+            <input type="number" id="customHeight" value="297" min="1" step="1" disabled />
+            <small>Активно только для произвольного формата.</small>
+          </div>
+
+          <div class="field">
+            <label for="quantity">Тираж, шт.</label>
+            <input type="number" id="quantity" value="1000" min="1" step="1" />
+            <small>Количество готовых экземпляров.</small>
+          </div>
+
+          <div class="field">
+            <label for="pages">Количество страниц / полос</label>
+            <input type="number" id="pages" value="2" min="1" step="1" />
+            <small>Для листовки обычно 1 или 2, для каталога — больше.</small>
+          </div>
+        </div>
+
+        <div class="section-title">2. Печать и бумага</div>
+        <div class="grid">
+          <div class="field">
+            <label for="printType">Тип печати</label>
+            <select id="printType">
+              <option value="digital">Цифровая печать</option>
+              <option value="offset" selected>Офсетная печать</option>
+            </select>
+            <small>В примере заданы условные тарифы для цифровой и офсетной печати.</small>
+          </div>
+
+          <div class="field">
+            <label for="colority">Цветность</label>
+            <select id="colority">
+              <option value="1+0">1+0 (черно-белая, 1 сторона)</option>
+              <option value="1+1">1+1 (черно-белая, 2 стороны)</option>
+              <option value="4+0">4+0 (цветная, 1 сторона)</option>
+              <option value="4+4" selected>4+4 (цветная, 2 стороны)</option>
+            </select>
+            <small>От цветности зависит коэффициент печати.</small>
+          </div>
+
+          <div class="field">
+            <label for="paperType">Тип бумаги</label>
+            <select id="paperType">
+              <option value="offset80">Офсетная 80 г/м²</option>
+              <option value="offset120">Офсетная 120 г/м²</option>
+              <option value="coated130" selected>Мелованная 130 г/м²</option>
+              <option value="coated170">Мелованная 170 г/м²</option>
+              <option value="coated250">Мелованная 250 г/м²</option>
+              <option value="coated300">Мелованная 300 г/м²</option>
+              <option value="designer">Дизайнерская бумага</option>
+            </select>
+            <small>Для каждого типа бумаги заложена стоимость за условный лист A4.</small>
+          </div>
+
+          <div class="field">
+            <label for="wastePercent">Технологический отход, %</label>
+            <input type="number" id="wastePercent" value="5" min="0" max="100" step="0.1" />
+            <small>Добавка на приладку, брак и технологические потери.</small>
+          </div>
+        </div>
+
+        <div class="section-title">3. Постпечатная обработка</div>
+        <div class="grid-3">
+          <div class="field">
+            <label for="lamination">Ламинация</label>
+            <select id="lamination">
+              <option value="none" selected>Нет</option>
+              <option value="gloss1">Глянцевая 1 сторона</option>
+              <option value="gloss2">Глянцевая 2 стороны</option>
+              <option value="matt1">Матовая 1 сторона</option>
+              <option value="matt2">Матовая 2 стороны</option>
+            </select>
+            <small>Стоимость зависит от площади изделия.</small>
+          </div>
+
+          <div class="field">
+            <label for="creasing">Биговка, линий на 1 изделие</label>
+            <input type="number" id="creasing" value="0" min="0" step="1" />
+            <small>Например, для открытки/обложки/упаковки.</small>
+          </div>
+
+          <div class="field">
+            <label for="folding">Фальцовка, сгибов на 1 изделие</label>
+            <input type="number" id="folding" value="0" min="0" step="1" />
+            <small>Например, буклет с 1–2 фальцами.</small>
+          </div>
+
+          <div class="field">
+            <label for="cutting">Доп. резка, операций</label>
+            <input type="number" id="cutting" value="1" min="0" step="1" />
+            <small>Если нужно много резов, укажите больше.</small>
+          </div>
+
+          <div class="field">
+            <label for="binding">Скрепление / сборка</label>
+            <select id="binding">
+              <option value="none" selected>Нет</option>
+              <option value="staple">Скоба</option>
+              <option value="glue">Клей</option>
+              <option value="spiral">Пружина</option>
+            </select>
+            <small>Актуально для многостраничных изделий.</small>
+          </div>
+
+          <div class="field">
+            <label for="packaging">Упаковка за заказ, ₽</label>
+            <input type="number" id="packaging" value="300" min="0" step="1" />
+            <small>Можно задать фиксированную сумму упаковки.</small>
+          </div>
+        </div>
+
+        <div class="section-title">4. Экономика заказа</div>
+        <div class="grid">
+          <div class="field">
+            <label for="designCost">Дизайн / подготовка макета, ₽</label>
+            <input type="number" id="designCost" value="0" min="0" step="1" />
+            <small>Фиксированная сумма за работу дизайнера или препресс.</small>
+          </div>
+
+          <div class="field">
+            <label for="setupCost">Приладка / запуск оборудования, ₽</label>
+            <input type="number" id="setupCost" value="1000" min="0" step="1" />
+            <small>Фиксированная технологическая стоимость запуска.</small>
+          </div>
+
+          <div class="field">
+            <label for="urgency">Срочность</label>
+            <select id="urgency">
+              <option value="1" selected>Стандартно</option>
+              <option value="1.15">Срочно (+15%)</option>
+              <option value="1.3">Очень срочно (+30%)</option>
+              <option value="1.5">Экспресс (+50%)</option>
+            </select>
+            <small>Множитель применяется к производственной части заказа.</small>
+          </div>
+
+          <div class="field">
+            <label for="markup">Наценка, %</label>
+            <input type="number" id="markup" value="25" min="0" max="1000" step="0.1" />
+            <small>Наценка поверх расчетной себестоимости.</small>
+          </div>
+
+          <div class="field">
+            <label for="discount">Скидка клиенту, %</label>
+            <input type="number" id="discount" value="0" min="0" max="100" step="0.1" />
+            <small>Применяется уже после наценки.</small>
+          </div>
+
+          <div class="field">
+            <label for="tax">Налог / НДС, %</label>
+            <input type="number" id="tax" value="0" min="0" max="100" step="0.1" />
+            <small>Если нужно выделять финальную цену с налогом.</small>
+          </div>
+        </div>
+
+        <div class="section-title">5. Дополнительные опции</div>
+        <div class="grid">
+          <div class="field">
+            <label>Добавить контрольный коэффициент</label>
+            <div class="checkbox-row">
+              <input type="checkbox" id="useRiskFactor" />
+              <span>Учитывать производственный риск</span>
+            </div>
+            <small>Полезно для нестандартных или проблемных заказов.</small>
+          </div>
+
+          <div class="field">
+            <label for="riskFactor">Коэффициент риска</label>
+            <input type="number" id="riskFactor" value="1.10" min="1" step="0.01" />
+            <small>Например: 1.05, 1.10, 1.20. Применяется только если галочка включена.</small>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn-primary" onclick="calculatePrice()">Рассчитать</button>
+          <button class="btn-secondary" onclick="window.print()">Печать</button>
+          <button class="btn-danger" onclick="resetForm()">Сбросить</button>
+        </div>
+
+        <div class="note">
+          Все тарифы внутри примера условные. Их нужно заменить на ваши реальные производственные расценки:
+          стоимость бумаги, печати, резки, ламинации, скрепления, приладки и т.д.
+        </div>
+
+        <div class="footer-info">
+          Логика расчета прозрачная: сначала считается себестоимость по статьям, затем применяются
+          срочность, риск, наценка, скидка и налог.
+        </div>
+      </div>
+
+      <!-- Правая колонка: результат -->
+      <div class="card">
+        <h2>Результат расчета</h2>
+
+        <div class="summary-top">
+          <div class="result-box">
+            <div class="label">Итоговая цена для клиента</div>
+            <div class="value" id="finalPrice">0 ₽</div>
+            <div class="sub" id="pricePerItem">0 ₽ / шт.</div>
+          </div>
+
+          <div class="result-box">
+            <div class="label">Себестоимость заказа</div>
+            <div class="value" id="costPrice">0 ₽</div>
+            <div class="sub" id="costPerItem">0 ₽ / шт.</div>
+          </div>
+
+          <div class="result-box">
+            <div class="label">Валовая прибыль</div>
+            <div class="value" id="grossProfit">0 ₽</div>
+            <div class="sub" id="marginPercent">0%</div>
+          </div>
+        </div>
+
+        <div class="section-title">Детализация стоимости</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Статья</th>
+              <th>Сумма</th>
+            </tr>
+          </thead>
+          <tbody id="breakdownBody">
+            <tr>
+              <td>Материалы</td>
+              <td>0 ₽</td>
+            </tr>
+            <tr>
+              <td>Печать</td>
+              <td>0 ₽</td>
+            </tr>
+            <tr>
+              <td>Постпечатная обработка</td>
+              <td>0 ₽</td>
+            </tr>
+            <tr>
+              <td>Подготовка / запуск</td>
+              <td>0 ₽</td>
+            </tr>
+            <tr>
+              <td>Дизайн / препресс</td>
+              <td>0 ₽</td>
+            </tr>
+            <tr>
+              <td>Упаковка</td>
+              <td>0 ₽</td>
+            </tr>
+            <tr>
+              <td>Срочность и риск</td>
+              <td>0 ₽</td>
+            </tr>
+            <tr>
+              <td>Наценка</td>
+              <td>0 ₽</td>
+            </tr>
+            <tr>
+              <td>Скидка</td>
+              <td>0 ₽</td>
+            </tr>
+            <tr>
+              <td>Налог</td>
+              <td>0 ₽</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="total-row">
+              <td>Итого</td>
+              <td id="tableTotal">0 ₽</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div class="warning" id="warningBox">
+          Проверьте тарифы и коэффициенты перед коммерческим использованием.
+        </div>
+
+        <div class="section-title">Техническая сводка</div>
+        <table>
+          <tbody id="techBody">
+            <tr>
+              <td>Формат в коэффициенте A4</td>
+              <td id="techFormatCoef">0</td>
+            </tr>
+            <tr>
+              <td>Эффективный тираж с отходом</td>
+              <td id="techEffQty">0</td>
+            </tr>
+            <tr>
+              <td>Печатных сторон всего</td>
+              <td id="techSides">0</td>
+            </tr>
+            <tr>
+              <td>Листов-эквивалентов A4</td>
+              <td id="techSheets">0</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="footer-info mono">
+          Формула: Себестоимость → Срочность/Риск → Наценка → Скидка → Налог
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!--
+    === Переключение светлой / тёмной темы ===
+    Кнопка закреплена в правом нижнем углу экрана (CSS: .theme-toggle — position: fixed).
+    При первом заходе тема берётся из localStorage или из системной настройки (prefers-color-scheme).
+    Луна 🌙 — сейчас светлая тема, клик включит тёмную. Солнце ☀️ — наоборот (логика в applyTheme).
+  -->
+  <button type="button" class="theme-toggle" id="themeToggle" aria-label="Переключить тему оформления">
+    <!-- Иконка декоративная; актуальная подпись для скринридеров задаётся в JS (aria-label на кнопке) -->
+    <span class="theme-toggle-icon" aria-hidden="true">🌙</span>
+  </button>
+
+  <script>
+    /*
+      ============================================================
+      КАЛЬКУЛЯТОР ЦЕНЫ ПОЛИГРАФИЧЕСКОГО ЗАКАЗА
+      ============================================================
+
+      Ниже задаются базовые справочники и тарифы.
+      Это демонстрационная модель.
+      Для реальной типографии их нужно подставить из ваших прайсов.
+
+      Логика:
+      1. Вычисляется коэффициент площади формата относительно A4.
+      2. Считается эффективный тираж с учетом отхода.
+      3. Считается стоимость материалов.
+      4. Считается стоимость печати.
+      5. Считается постпечатка.
+      6. Добавляются фиксированные расходы.
+      7. Применяются срочность и риск.
+      8. Применяются наценка, скидка и налог.
+    */
+
+    // --- Справочник форматов ---
+    // Коэффициенты заданы относительно площади A4.
+    const formatMap = {
+      "A6": { width: 105, height: 148 },
+      "A5": { width: 148, height: 210 },
+      "A4": { width: 210, height: 297 },
+      "A3": { width: 297, height: 420 }
+    };
+
+    // Базовая площадь A4 в мм²
+    const A4_AREA = 210 * 297;
+
+    // --- Стоимость бумаги за 1 условный лист A4 ---
+    // Эти значения примерные и должны быть заменены на реальные.
+    const paperRates = {
+      "offset80": 3.0,
+      "offset120": 4.2,
+      "coated130": 5.5,
+      "coated170": 7.2,
+      "coated250": 11.5,
+      "coated300": 13.8,
+      "designer": 22.0
+    };
+
+    // --- Стоимость печати за 1 условную печатную сторону A4 ---
+    // Для офсета и цифры делаем разные ставки.
+    // Коэффициент цветности умножается на базовую ставку.
+    const printBaseRates = {
+      "offset": 1.5,
+      "digital": 4.5
+    };
+
+    // --- Коэффициенты цветности ---
+    const colorityRates = {
+      "1+0": 0.75,
+      "1+1": 1.25,
+      "4+0": 1.35,
+      "4+4": 2.4
+    };
+
+    // --- Количество печатных сторон по цветности ---
+    const sideMap = {
+      "1+0": 1,
+      "1+1": 2,
+      "4+0": 1,
+      "4+4": 2
+    };
+
+    // --- Ламинация за 1 сторону одного A4-эквивалента ---
+    const laminationRates = {
+      "none": 0,
+      "gloss1": 2.0,
+      "gloss2": 4.0,
+      "matt1": 2.5,
+      "matt2": 5.0
+    };
+
+    // --- Постпечатные тарифы ---
+    const creasingRatePerLine = 0.35;  // биговка: за 1 линию на 1 изделие
+    const foldingRatePerFold = 0.50;   // фальцовка: за 1 сгиб на 1 изделие
+    const cuttingRatePerOperation = 80; // резка: за 1 операцию на заказ
+
+    // --- Скрепление ---
+    const bindingRates = {
+      "none": 0,
+      "staple": 2.5,  // на 1 изделие
+      "glue": 9.0,    // на 1 изделие
+      "spiral": 18.0  // на 1 изделие
+    };
+
+    // Форматирование суммы
+    function formatMoney(value) {
+      return new Intl.NumberFormat('ru-RU', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(value) + ' ₽';
+    }
+
+    // Форматирование числа
+    function formatNumber(value) {
+      return new Intl.NumberFormat('ru-RU', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2
+      }).format(value);
+    }
+
+    // Получить коэффициент формата относительно A4
+    function getFormatCoefficient() {
+      const format = document.getElementById('format').value;
+      let width, height;
+
+      if (format === 'Custom') {
+        width = parseFloat(document.getElementById('customWidth').value) || 0;
+        height = parseFloat(document.getElementById('customHeight').value) || 0;
+      } else {
+        width = formatMap[format].width;
+        height = formatMap[format].height;
+      }
+
+      const area = width * height;
+      return area / A4_AREA;
+    }
+
+    // Переключение полей кастомного формата
+    function toggleCustomFormatFields() {
+      const isCustom = document.getElementById('format').value === 'Custom';
+      document.getElementById('customWidth').disabled = !isCustom;
+      document.getElementById('customHeight').disabled = !isCustom;
+    }
+
+    // Основной расчет
+    function calculatePrice() {
+      // --- Чтение входных данных ---
+      const productName = document.getElementById('productName').value.trim() || 'Полиграфический заказ';
+      const quantity = Math.max(1, parseFloat(document.getElementById('quantity').value) || 1);
+      const pages = Math.max(1, parseFloat(document.getElementById('pages').value) || 1);
+      const printType = document.getElementById('printType').value;
+      const colority = document.getElementById('colority').value;
+      const paperType = document.getElementById('paperType').value;
+      const wastePercent = Math.max(0, parseFloat(document.getElementById('wastePercent').value) || 0);
+
+      const lamination = document.getElementById('lamination').value;
+      const creasing = Math.max(0, parseFloat(document.getElementById('creasing').value) || 0);
+      const folding = Math.max(0, parseFloat(document.getElementById('folding').value) || 0);
+      const cutting = Math.max(0, parseFloat(document.getElementById('cutting').value) || 0);
+      const binding = document.getElementById('binding').value;
+      const packaging = Math.max(0, parseFloat(document.getElementById('packaging').value) || 0);
+
+      const designCost = Math.max(0, parseFloat(document.getElementById('designCost').value) || 0);
+      const setupCost = Math.max(0, parseFloat(document.getElementById('setupCost').value) || 0);
+      const urgency = Math.max(1, parseFloat(document.getElementById('urgency').value) || 1);
+      const markup = Math.max(0, parseFloat(document.getElementById('markup').value) || 0);
+      const discount = Math.max(0, parseFloat(document.getElementById('discount').value) || 0);
+      const tax = Math.max(0, parseFloat(document.getElementById('tax').value) || 0);
+
+      const useRiskFactor = document.getElementById('useRiskFactor').checked;
+      const riskFactor = Math.max(1, parseFloat(document.getElementById('riskFactor').value) || 1);
+
+      // --- Производственные коэффициенты ---
+      const formatCoef = getFormatCoefficient(); // площадь изделия к A4
+      const effectiveQty = quantity * (1 + wastePercent / 100); // с учетом отхода
+      const printSides = sideMap[colority]; // 1 или 2
+      const colorityCoef = colorityRates[colority];
+
+      /*
+        sheetsEquivalent:
+        Сколько условных листов A4 требуется по площади и страницам.
+        pages используется как множитель количества печатных единиц.
+      */
+      const sheetsEquivalent = effectiveQty * pages * formatCoef;
+
+      /*
+        materialsCost:
+        Бумага считается по количеству условных A4-листов.
+      */
+      const paperRate = paperRates[paperType];
+      const materialsCost = sheetsEquivalent * paperRate;
+
+      /*
+        printCost:
+        Базовая ставка печати * коэффициент цветности * число A4-эквивалентов.
+      */
+      const printBaseRate = printBaseRates[printType];
+      const printCost = sheetsEquivalent * printBaseRate * colorityCoef;
+
+      /*
+        laminationCost:
+        Ламинация зависит от числа сторон и площади.
+        Так как ставка уже заведена как "за набор сторон" для A4, дополнительно на стороны не умножаем.
+      */
+      const laminationRate = laminationRates[lamination];
+      const laminationCost = effectiveQty * pages * formatCoef * laminationRate;
+
+      /*
+        creasingCost:
+        За каждую линию биговки на каждом изделии.
+      */
+      const creasingCost = quantity * creasing * creasingRatePerLine;
+
+      /*
+        foldingCost:
+        За каждый сгиб на каждом изделии.
+      */
+      const foldingCost = quantity * folding * foldingRatePerFold;
+
+      /*
+        cuttingCost:
+        Обычно это фиксированная стоимость на заказ.
+      */
+      const totalCuttingCost = cutting * cuttingRatePerOperation;
+
+      /*
+        bindingCost:
+        Только если есть скрепление.
+      */
+      const bindingRate = bindingRates[binding];
+      const bindingCost = quantity * bindingRate;
+
+      /*
+        postpressCost:
+        Общая постпечатка
+      */
+      const postpressCost = laminationCost + creasingCost + foldingCost + totalCuttingCost + bindingCost;
+
+      /*
+        baseCost:
+        Базовая себестоимость без срочности, риска и коммерческой части.
+      */
+      const baseCost = materialsCost + printCost + postpressCost + setupCost + designCost + packaging;
+
+      /*
+        Производственная часть для применения срочности:
+        Обычно срочность не применяется к скидке/налогу/наценке.
+      */
+      const productionCost = materialsCost + printCost + postpressCost + setupCost;
+
+      /*
+        urgencyExtra:
+        Добавочная стоимость от срочности.
+        Берем только добавку сверх 1.0
+      */
+      const urgencyExtra = productionCost * (urgency - 1);
+
+      /*
+        riskExtra:
+        Добавочная стоимость риска.
+      */
+      const riskAppliedFactor = useRiskFactor ? riskFactor : 1;
+      const costAfterUrgency = baseCost + urgencyExtra;
+      const riskExtra = costAfterUrgency * (riskAppliedFactor - 1);
+
+      /*
+        costPrice:
+        Полная расчетная себестоимость.
+      */
+      const costPrice = costAfterUrgency + riskExtra;
+
+      /*
+        markupAmount:
+        Наценка в рублях
+      */
+      const markupAmount = costPrice * (markup / 100);
+
+      /*
+        priceBeforeDiscount:
+        Цена после наценки, до скидки
+      */
+      const priceBeforeDiscount = costPrice + markupAmount;
+
+      /*
+        discountAmount:
+        Скидка клиенту
+      */
+      const discountAmount = priceBeforeDiscount * (discount / 100);
+
+      /*
+        priceAfterDiscount:
+        После скидки
+      */
+      const priceAfterDiscount = priceBeforeDiscount - discountAmount;
+
+      /*
+        taxAmount:
+        Налог сверху, если нужен.
+      */
+      const taxAmount = priceAfterDiscount * (tax / 100);
+
+      /*
+        finalPrice:
+        Финальная цена
+      */
+      const finalPrice = priceAfterDiscount + taxAmount;
+
+      /*
+        grossProfit:
+        Валовая прибыль = цена без налога - себестоимость
+        Налог обычно не считаем прибылью.
+      */
+      const grossProfit = priceAfterDiscount - costPrice;
+
+      /*
+        marginPercent:
+        Маржинальность относительно цены без налога.
+      */
+      const marginPercent = priceAfterDiscount > 0
+        ? (grossProfit / priceAfterDiscount) * 100
+        : 0;
+
+      // --- Вывод основных итогов ---
+      document.getElementById('finalPrice').textContent = formatMoney(finalPrice);
+      document.getElementById('pricePerItem').textContent = formatMoney(finalPrice / quantity) + ' / шт.';
+
+      document.getElementById('costPrice').textContent = formatMoney(costPrice);
+      document.getElementById('costPerItem').textContent = formatMoney(costPrice / quantity) + ' / шт.';
+
+      document.getElementById('grossProfit').textContent = formatMoney(grossProfit);
+      document.getElementById('marginPercent').textContent = formatNumber(marginPercent) + '%';
+
+      // --- Детализация ---
+      const breakdown = [
+        { name: 'Материалы', value: materialsCost },
+        { name: 'Печать', value: printCost },
+        { name: 'Постпечатная обработка', value: postpressCost },
+        { name: 'Подготовка / запуск', value: setupCost },
+        { name: 'Дизайн / препресс', value: designCost },
+        { name: 'Упаковка', value: packaging },
+        { name: 'Срочность и риск', value: urgencyExtra + riskExtra },
+        { name: 'Наценка', value: markupAmount },
+        { name: 'Скидка', value: -discountAmount },
+        { name: 'Налог', value: taxAmount }
+      ];
+
+      const breakdownBody = document.getElementById('breakdownBody');
+      breakdownBody.innerHTML = breakdown.map(item => `
+        <tr>
+          <td>${item.name}</td>
+          <td>${item.value < 0 ? '- ' + formatMoney(Math.abs(item.value)) : formatMoney(item.value)}</td>
+        </tr>
+      `).join('');
+
+      document.getElementById('tableTotal').textContent = formatMoney(finalPrice);
+
+      // --- Техническая сводка ---
+      document.getElementById('techFormatCoef').textContent = formatNumber(formatCoef);
+      document.getElementById('techEffQty').textContent = formatNumber(effectiveQty);
+      document.getElementById('techSides').textContent = formatNumber(printSides * pages);
+      document.getElementById('techSheets').textContent = formatNumber(sheetsEquivalent);
+
+      // --- Предупреждение ---
+      const warningBox = document.getElementById('warningBox');
+      let warningText = `Расчет выполнен для: ${productName}. `;
+
+      if (document.getElementById('printType').value === 'digital' && quantity > 1000) {
+        warningText += 'Обратите внимание: для большого тиража цифровая печать может быть экономически невыгодна. ';
+      }
+
+      if (binding !== 'none' && pages < 4) {
+        warningText += 'Скрепление выбрано при малом количестве страниц. Проверьте, действительно ли оно нужно. ';
+      }
+
+      if (formatCoef > 1.5) {
+        warningText += 'Изделие крупнее A4, проверьте реальную раскладку на печатном листе. ';
+      }
+
+      if (wastePercent > 10) {
+        warningText += 'Задан высокий процент технологического отхода. ';
+      }
+
+      if (warningText.trim() === `Расчет выполнен для: ${productName}.`) {
+        warningText += 'Проверьте тарифы и коэффициенты перед коммерческим использованием.';
+      }
+
+      warningBox.textContent = warningText;
+    }
+
+    // Сброс формы к стартовым значениям
+    function resetForm() {
+      document.getElementById('productName').value = 'Полиграфический заказ';
+      document.getElementById('format').value = 'A4';
+      document.getElementById('customWidth').value = 210;
+      document.getElementById('customHeight').value = 297;
+      document.getElementById('quantity').value = 1000;
+      document.getElementById('pages').value = 2;
+      document.getElementById('printType').value = 'offset';
+      document.getElementById('colority').value = '4+4';
+      document.getElementById('paperType').value = 'coated130';
+      document.getElementById('wastePercent').value = 5;
+      document.getElementById('lamination').value = 'none';
+      document.getElementById('creasing').value = 0;
+      document.getElementById('folding').value = 0;
+      document.getElementById('cutting').value = 1;
+      document.getElementById('binding').value = 'none';
+      document.getElementById('packaging').value = 300;
+      document.getElementById('designCost').value = 0;
+      document.getElementById('setupCost').value = 1000;
+      document.getElementById('urgency').value = 1;
+      document.getElementById('markup').value = 25;
+      document.getElementById('discount').value = 0;
+      document.getElementById('tax').value = 0;
+      document.getElementById('useRiskFactor').checked = false;
+      document.getElementById('riskFactor').value = 1.10;
+
+      toggleCustomFormatFields();
+      calculatePrice();
+    }
+
+    // Подписка на события изменения полей
+    function bindAutoCalculation() {
+      const inputs = document.querySelectorAll('input, select');
+      inputs.forEach(input => {
+        input.addEventListener('input', calculatePrice);
+        input.addEventListener('change', () => {
+          if (input.id === 'format') {
+            toggleCustomFormatFields();
+          }
+          calculatePrice();
+        });
+      });
+    }
+
+    /** Ключ в localStorage для сохранения выбранной темы между визитами */
+    var THEME_STORAGE_KEY = 'print-calc-theme';
+
+    /**
+     * Применяет тему к корневому элементу и обновляет кнопку (иконка и подписи для экранных читалок).
+     * @param {string} theme — 'light' или 'dark'
+     * @param {boolean} [persist] — если true, сохранить выбор в localStorage (при явном переключении пользователем)
+     */
+    function applyTheme(theme, persist) {
+      document.documentElement.setAttribute('data-theme', theme);
+      var btn = document.getElementById('themeToggle');
+      var icon = btn.querySelector('.theme-toggle-icon');
+      if (theme === 'dark') {
+        icon.textContent = '☀️';
+        btn.setAttribute('aria-label', 'Включить светлую тему');
+        btn.setAttribute('title', 'Светлая тема');
+      } else {
+        icon.textContent = '🌙';
+        btn.setAttribute('aria-label', 'Включить тёмную тему');
+        btn.setAttribute('title', 'Тёмная тема');
+      }
+      if (persist) {
+        try {
+          localStorage.setItem(THEME_STORAGE_KEY, theme);
+        } catch (e) { /* игнорируем недоступность хранилища */ }
+      }
+    }
+
+    /** Переключает light ↔ dark и сохраняет предпочтение */
+    function toggleTheme() {
+      var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      applyTheme(next, true);
+    }
+
+    // Инициализация
+    window.addEventListener('DOMContentLoaded', () => {
+      // Подстраиваем кнопку под тему, уже выставленную скриптом в <head> (без записи в localStorage)
+      applyTheme(document.documentElement.getAttribute('data-theme') || 'light', false);
+
+      document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+
+      toggleCustomFormatFields();
+      bindAutoCalculation();
+      calculatePrice();
+    });
+  </script>
+</body>
+
+</html>
